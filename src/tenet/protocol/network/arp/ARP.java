@@ -78,6 +78,7 @@ public class ARP extends InterruptObject implements INetworkLayer,
 	 */
 	static Integer arpId = 0x806;
 	static double timeToLive = 10000;
+	static double arpDelay = 0.001;
 	
 	public ARP() {
 		arpTable = new HashMap<ProtocolPair, HardwarePair>();
@@ -145,7 +146,7 @@ public class ARP extends InterruptObject implements INetworkLayer,
 							&& Arrays.equals(datalink.getUniqueID().toBytes(), arpframe.sha)) {
 						for (IClient<Integer> c: networkLayers.values()) {
 							if (c instanceof InterruptObject) {
-								((InterruptObject)c).delayInterrupt(macConflict, datalink.getUniqueID(), 0.001);
+								((InterruptObject)c).delayInterrupt(macConflict, datalink.getUniqueID(), arpDelay);
 							}
 						}	
 					}				

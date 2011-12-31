@@ -3,8 +3,9 @@ package tenet.protocol.network.ipv4;
 import tenet.protocol.network.INetworkLayer;
 import tenet.protocol.statecontrol.IStateSetable;
 import tenet.util.pattern.serviceclient.IClient;
+import tenet.util.pattern.serviceclient.IRegistryableService;
 
-public interface IPProtocol extends IStateSetable, INetworkLayer, IClient<Integer>{
+public interface IPProtocol extends IStateSetable, INetworkLayer, IClient<Integer>, IRegistryableService<Integer>{
 
 	/* 
 	*	  Some constants: 
