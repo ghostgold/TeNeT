@@ -350,6 +350,7 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 			case receiveCollision:
 				wait(IDataLinkLayer.INT_FRAME_RECEIVE_READY, Double.NaN);
 			}
+			break;
 		case IDataLinkLayer.INT_FRAME_RECEIVE_READY:
 			waitReceive();
 		}
