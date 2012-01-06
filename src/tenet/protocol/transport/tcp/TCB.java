@@ -63,7 +63,16 @@ public class TCB {
 		while (!retransQueue.isEmpty() && retransQueue.getFirst().segment.seqNum < sendUnACK) {
 			if (retransQueue.getFirst().segment.getFIN()) 
 				finACK = true;
-			retransQueue.removeFirst();
+			RetransPair head = retransQueue.removeFirst();
+			if (RTT < 0) {
+				RTT = Simulator.GetTime() - head.time;
+				DevRTT = 0;
+			}
+			else {
+				RTT = 0.875 * RTT + 0.125 * (Simulator.GetTime() - head.time);
+				DevRTT = 0.75 * DevRTT + 0.25 * Math.abs(Simulator.GetTime() - RTT);
+			}
+			RTO = RTT + 4 * DevRTT;
 		}
 	}
 	
@@ -179,8 +188,11 @@ public class TCB {
 		if (!Double.isNaN(timewait)) {
 			if (timewait < Simulator.GetTime()) {
 				handler.timeWaitTimeOut(this);
-				
 			}
+		}
+		if (!retransQueue.isEmpty() && retransQueue.getFirst().time + RTO < Simulator.GetTime()) {
+			tcp.sendSegment(retransQueue.getFirst().segment, retransQueue.getFirst().ip);
+			retransQueue.getFirst().time = Simulator.GetTime();
 		}
 	}
 	
@@ -215,7 +227,9 @@ public class TCB {
 	boolean finACK = false;
 	
 	double timewait = Double.NaN;
-	
+	double RTO = 3.0;
+	double RTT = -1;
+	double DevRTT = -1;
 	public static final double MSL = 4;
 	
 	class RetransPair {

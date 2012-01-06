@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 
 import tenet.node.INode;
-import tenet.node.router.Router.RouteEntry;
 import tenet.protocol.interrupt.InterruptObject;
 import tenet.protocol.interrupt.InterruptParam;
 import tenet.protocol.network.ipv4.IPDatagram;
@@ -26,6 +25,7 @@ public class Router extends InterruptObject implements INode {
 		wait(IPProtocol.recPacketSignal, Double.NaN);
 		defaultRoute = null;
 		staticRoutingTable = new LinkedList<RouteEntry>();
+		dynamicRoutingTable = new LinkedList<RouteEntry>();
 		slots = new ArrayList<InternetProtocol>();
 	}
 
@@ -110,11 +110,21 @@ public class Router extends InterruptObject implements INode {
 						result = route;
 				}
 			}
-			if (result == null)
-				result = defaultRoute;
-			if (result != null) {
-				slots.get(result.linkNumber).forward(datagram.toBytes(), result.nextNodeIP);
+			for (RouteEntry route: dynamicRoutingTable) {
+				if (route.match(datagram.getDst())) {
+					if (result == null || result.metric > route.metric) 
+						result = route;
+				}
 			}
+			if (result == null) {
+				result = defaultRoute;
+			}
+			if (result != null && ((slots.size() > 1) || datagram.getSrc() == slots.get(0).getAddress())) {
+				slots.get(result.linkNumber).forward(datagram.toBytes(), result.nextNodeIP);
+				//slots.get(result.linkNumber).forward(datagram.toBytes(), IPProtocol.broadcastIP);
+				//System.out.println("To: " + ipToString(datagram.getDst()) + ", by " + ipToString(slots.get(result.linkNumber).getAddress()) + ", next "  + ipToString(result.nextNodeIP));
+			}
+			
 			wait(IPProtocol.recPacketSignal, Double.NaN);
 			break;
 		}
@@ -150,48 +160,55 @@ public class Router extends InterruptObject implements INode {
 	}
 	
 	public void clearDynamicRoutingTable() {
-
+		dynamicRoutingTable.clear();
 	}
 	
 	public void clearStaticRoutingTable() {
 		staticRoutingTable.clear();
 	}
 	
-	
+	public static String ipToString(int x) {
+		return ((x >> 24) & 0xff) + "." +  ((x >> 16) & 0xff)+ "." +  ((x >> 8) & 0xff) + "." +  ((x >> 0) & 0xff); 
+	}
 	private boolean power;
 	HashMap<IClient<?>,byte[]> addrmap = new HashMap<IClient<?>,byte[]>();
 	HashSet<IClient<?>> clientset = new HashSet<IClient<?>>();
 	ArrayList<InternetProtocol> slots;
 	
 	LinkedList<RouteEntry> staticRoutingTable;
-	private RouteEntry defaultRoute;
+	LinkedList<RouteEntry> dynamicRoutingTable;
+	protected RouteEntry defaultRoute;
 
 	
-	class RouteEntry {
-		private int dest;
-		private int mask;
-		private int binaryMask;
-		private int linkNumber;
-		private int nextNodeIP;
-		private int metric;
 
-		public RouteEntry(Integer destIPAddr, Integer mask, Integer linkNumber, Integer nextNodeIP, Integer metric) {
-			this.dest = destIPAddr;
-			this.mask = mask;
-			this.binaryMask = ~((1 << (32 - mask)) - 1);
-			if (mask == 0)
-				this.binaryMask = 0;
-			this.linkNumber = linkNumber;
-			this.nextNodeIP = nextNodeIP;
-			this.metric = metric;
-		}
-		
-		public boolean match(Integer address) {
-			if ((dest & binaryMask) == (address.intValue() & binaryMask)) 
-				return true;
-			return false;
-		}
-		
+
+}
+
+class RouteEntry {
+	int dest;
+	int mask;
+	int binaryMask;
+	int linkNumber;
+	int nextNodeIP;
+	int metric;
+
+	public RouteEntry(Integer destIPAddr, Integer mask, Integer linkNumber, Integer nextNodeIP, Integer metric) {
+		this.dest = destIPAddr;
+		this.mask = mask;
+		this.binaryMask = ~((1 << (32 - mask)) - 1);
+		if (mask == 0)
+			this.binaryMask = 0;
+		this.linkNumber = linkNumber;
+		this.nextNodeIP = nextNodeIP;
+		this.metric = metric;
 	}
+	
+	public boolean match(Integer address) {
+		if ((dest & binaryMask) == (address.intValue() & binaryMask)) 
+			return true;
+		return false;
+	}
+	
 
+	
 }

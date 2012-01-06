@@ -48,6 +48,28 @@ public class TCPSegment {
 		controlBits |= (1 << 0);
 	}
 
+	void calcChecksum() {
+		byte[] result = toBytes();
+		checkSum = 0;
+		checkSum ^= ByteLib.bytesToInt(result, 0);
+		checkSum ^= ByteLib.bytesToInt(result, 4);
+		checkSum ^= ByteLib.bytesToInt(result, 8);
+		checkSum ^= ByteLib.bytesToInt(result, 12);
+		for (int i = 0; i < data.length; i +=4)
+			checkSum ^= ByteLib.bytesToInt(data, i);
+	}
+	
+	public boolean check() {
+		byte[] result = toBytes();
+		int check = 0;
+		check ^= ByteLib.bytesToInt(result, 0);
+		check ^= ByteLib.bytesToInt(result, 4);
+		check ^= ByteLib.bytesToInt(result, 8);
+		check ^= ByteLib.bytesToInt(result, 12);
+		for (int i = 0; i < data.length; i +=4)
+			check ^= ByteLib.bytesToInt(data, i);
+		return check == checkSum;
+	}
 	public byte[] toBytes() {
 		byte[] result = new byte[dataOffset * 4 + data.length];
 		result[0] = ByteLib.byteFromUnsigned(srcPort, 8);

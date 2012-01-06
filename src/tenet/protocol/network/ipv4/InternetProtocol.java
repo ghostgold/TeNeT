@@ -9,12 +9,14 @@ import java.util.Map.Entry;
 
 import tenet.core.Simulator;
 import tenet.node.INode;
+import tenet.node.router.DynamicRouter;
 import tenet.node.router.Router;
 import tenet.protocol.datalink.FrameParamStruct;
 import tenet.protocol.datalink.IDataLinkLayer;
 import tenet.protocol.datalink.IDataLinkLayer.ReceiveParam;
 import tenet.protocol.datalink.IDataLinkLayer.TransmitParam;
 import tenet.protocol.datalink.MediumAddress;
+import tenet.protocol.datalink.sfdatalink.DatalinkWithARP;
 import tenet.protocol.interrupt.InterruptObject;
 import tenet.protocol.interrupt.InterruptParam;
 import tenet.protocol.network.arp.ARP;
@@ -97,6 +99,9 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 	public void attachTo(IService<?> service) {
 		if (service instanceof IDataLinkLayer) { 
 			datalink = (IDataLinkLayer)service;
+//			if (datalink instanceof DatalinkWithARP) {
+//				((DatalinkWithARP)datalink).getARP().registryClient(this); 
+//			}
 		}
 		else if (service instanceof Router) {
 			node = (Router)service;
@@ -146,6 +151,11 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 				new IPReceiveParam(IPReceiveParam.ReceiveType.OK, destIPAddr, srcIPAddr, protocolID, datagram.toBytes()),
 				ipDelay);
 	}
+
+	public void sendPacket(byte[] data, Integer protocol) {
+		IPDatagram datagram = new IPDatagram(data, address, broadcastIP, protocol, fragmentID++);
+		forward(datagram.toBytes(), broadcastIP);
+	}
 	
 	public void forward(byte[] data, Integer nextIP) {
 		IPDatagram datagram = IPDatagram.fromBytes(data);
@@ -153,29 +163,38 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 		if((dst &binaryMask) != (address & binaryMask)) 
 			dst = nextIP.intValue();
 		datagram.nextIP = dst;
+		if (!canSend(IPProtocol.broadcastIP))
+			return;
 		outBuffer.add(datagram);
 		if (noDatagramOnGoing) {
 			processOutBuffer();
 		}
 	}
-
+	
 	public void processOutBuffer() {
+
 		if (!frameBuffer.isEmpty()) {
 			datalink.transmitFrame(frameBuffer.remove());
 			noDatagramOnGoing = false;
 		}
 		else if (!outBuffer.isEmpty()) {
+			
 			IPDatagram datagram = outBuffer.remove();
 			//little endian
 			byte[] little = new byte[4];
 			ByteLib.bytesFromInt(little, 0, datagram.nextIP);
-			byte[] hardAddress = arp.getHardwareAddress(IPProtocol.protocolID, little);			
-//			byte[] hardAddress = arp.getHardwareAddress(IPProtocol.protocolID, IPDatagram.intAddressToBytes(datagram.nextIP));
+			byte[] hardAddress ;
 			if (datagram.getDst() == broadcastIP)
 				hardAddress = MediumAddress.fromString("FF:FF:FF:FF:FF:FF").toBytes();
+			else  {
+				hardAddress = arp.getHardwareAddress(IPProtocol.protocolID, little);
+				//arpBuffer.add(datagram);
+				//wait(ARPRESULT, 0.2);
+				if (hardAddress == null) 
+					hardAddress = MediumAddress.fromString("FF:FF:FF:FF:FF:FF").toBytes();
+//			byte[] hardAddress = arp.getHardwareAddress(IPProtocol.protocolID, IPDatagram.intAddressToBytes(datagram.nextIP));
+			}
 			if (hardAddress == null) {
-				arpBuffer.add(datagram);
-				wait(ARPRESULT, 0.4);
 			}
 			else {
 				int mtu = datalink.getMTU();
@@ -286,9 +305,9 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 			break;
 		case IDataLinkLayer.INT_FRAME_TRANSMIT:
 			TransmitParam transmitParam = (TransmitParam)param;
+			noDatagramOnGoing = true;			
 			switch (transmitParam.status) {
 			case transmitOK:
-				noDatagramOnGoing = true;
 				processOutBuffer();
 				break;
 			case dataLinkOff:
@@ -323,6 +342,7 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 			switch (receiveParam.status) {
 			case receiveOK:
 				IPDatagram  datagram = IPDatagram.fromBytes(receiveParam.frame.dataParam);
+				//System.out.println("IP " + Router.ipToString(address) + " receive " + datagram.protocol);
 				if (datagram.getDst() == address || datagram.getDst() == broadcastIP) {
 					BufferIdentifier bi = new BufferIdentifier(datagram.getSrc(), datagram.getDst(), datagram.protocol, datagram.getIdentification());
 					LinkedList<IPDatagram> buffer = inBuffer.get(bi);
@@ -333,9 +353,18 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 					buffer.add(datagram);					
 					timeOfBufferIdentifier.put(bi, Simulator.GetTime());
 					byte[] data = IPDatagram.reassemble(buffer);
+					
 					if (data != null) {
-						((InterruptObject)transportLayers.get(new Integer(datagram.protocol))).delayInterrupt(recPacketSignal,
+						
+						if (datagram.protocol == DynamicRouter.RIPProtocol) {
+							node.delayInterrupt(DynamicRouter.RIPSignal, 
+									new IPReceiveParam(IPReceiveParam.ReceiveType.OK, this.address, datagram.getSrc() , DynamicRouter.RIPProtocol, data),
+									ipDelay);
+						}
+						else if (transportLayers.get(new Integer(datagram.protocol)) != null){
+							((InterruptObject)transportLayers.get(new Integer(datagram.protocol))).delayInterrupt(recPacketSignal,
 								new IPReceiveParam(IPReceiveParam.ReceiveType.OK, datagram.getDst(), datagram.getSrc(), datagram.protocol, data), ipDelay);
+						}
 						inBuffer.remove(bi);
 						timeOfBufferIdentifier.remove(bi);
 					}
@@ -349,6 +378,7 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 				break;
 			case receiveCollision:
 				wait(IDataLinkLayer.INT_FRAME_RECEIVE_READY, Double.NaN);
+				break;
 			}
 			break;
 		case IDataLinkLayer.INT_FRAME_RECEIVE_READY:
@@ -396,7 +426,7 @@ public class InternetProtocol extends InterruptObject implements IPProtocol{
 	Map<Integer, IClient<Integer>> transportLayers;
 	
 	//private static final int bufferLimit = 10000;
-	static final double ipDelay = 0.001;
+	static final double ipDelay = 0.00001;
 	static final double timeLimit = 20;
 	
 	private LinkedList<IPDatagram> outBuffer;

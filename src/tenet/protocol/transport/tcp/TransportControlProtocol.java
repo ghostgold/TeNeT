@@ -188,6 +188,8 @@ public class TransportControlProtocol extends InterruptObject implements TCPProt
 		case IPProtocol.recPacketSignal:
 			IPReceiveParam datagram = (IPReceiveParam)param;
 			TCPSegment segment = TCPSegment.fromBytes(datagram.getData());
+			if (!segment.check())
+				return;
 			//System.out.println("IP:" + datagram.getDestination() + " receive: " + segment.controlBits +" acknum: " + segment.ackNum +  " at " + Simulator.GetTime());
 			for (TCB tcb: connections.values()) {
 				if (tcb.localIP == datagram.getDestination() && tcb.localPort == segment.dstPort 
@@ -215,6 +217,7 @@ public class TransportControlProtocol extends InterruptObject implements TCPProt
 	}
 	
 	void sendSegment(TCPSegment segment, int dstIP) {
+		segment.calcChecksum();
 		ipservice.sendPacket(segment.toBytes(), 
 				new Integer(getIP()), 
 				new Integer(dstIP), new Integer(this.getUniqueID()));

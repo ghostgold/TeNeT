@@ -78,7 +78,7 @@ public class ARP extends InterruptObject implements INetworkLayer,
 	 */
 	static Integer arpId = 0x806;
 	static double timeToLive = 10000;
-	static double arpDelay = 0.001;
+	static double arpDelay = 0.0000001;
 	
 	public ARP() {
 		arpTable = new HashMap<ProtocolPair, HardwarePair>();
@@ -156,14 +156,12 @@ public class ARP extends InterruptObject implements INetworkLayer,
 						ProtocolPair key = new ProtocolPair(arpframe.ptype, arpframe.getSPA());
 					
 
-						
+						//arpTable.put(key, new HardwarePair(MediumAddress.fromBytes(arpframe.sha), Simulator.getInstance().getTime()));
 						if (arpTable.get(key) != null) {
 							arpTable.put(key, new HardwarePair(MediumAddress.fromBytes(arpframe.sha), Simulator.getInstance().getTime()));
 							mergeFlag = true;
 						}
-						
-						
-						
+
 						//?Am I the target protocol address?
 						if (Arrays.equals(node.getAddress(client), arpframe.getTPA())) {
 							if (!mergeFlag) 
